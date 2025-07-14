@@ -106,10 +106,14 @@ class AnalysisController extends Controller
             return response()->json(['error' => 'Project not found'], 404);
         }
 
+        // Calculate total metadata summary
+        $metadataSummary = $this->calculateMetadataSummary($project->metadata ?? []);
+
         return response()->json([
             'progress' => $project->progress,
             'has_results' => !empty($project->analysis_results),
             'errors' => $project->working_context['errors'] ?? [],
+            'metadata_summary' => $metadataSummary,
         ]);
     }
 
@@ -128,6 +132,7 @@ class AnalysisController extends Controller
             'analysis_results' => $project->analysis_results,
             'final_draft' => $project->final_draft,
             'progress' => $project->progress,
+            'metadata' => $project->metadata,
         ]);
     }
 
@@ -235,6 +240,57 @@ class AnalysisController extends Controller
                 'quotes' => 'Exactly 3 quotes per theme',
                 'uniqueness' => 'No duplicate quotes across themes'
             ]
+        ];
+    }
+
+    protected function calculateMetadataSummary(array $metadata): array
+    {
+        if (empty($metadata)) {
+            return [
+                'total_tokens' => 0,
+                'total_cost' => 0.0,
+                'total_duration_ms' => 0,
+                'total_participants' => 0,
+                'questions_completed' => 0,
+                'model' => null,
+            ];
+        }
+
+        $totalTokens = 0;
+        $totalCost = 0.0;
+        $totalDuration = 0;
+        $totalParticipants = 0;
+        $questionsCompleted = count($metadata);
+        $model = null;
+
+        foreach ($metadata as $questionMeta) {
+            if (isset($questionMeta['tokens']['total'])) {
+                $totalTokens += $questionMeta['tokens']['total'];
+            }
+            if (isset($questionMeta['costs']['total'])) {
+                $totalCost += $questionMeta['costs']['total'];
+            }
+            if (isset($questionMeta['duration_ms'])) {
+                $totalDuration += $questionMeta['duration_ms'];
+            }
+            if (isset($questionMeta['participant_count'])) {
+                $totalParticipants = max($totalParticipants, $questionMeta['participant_count']);
+            }
+            if (!$model && isset($questionMeta['model'])) {
+                $model = $questionMeta['model'];
+            }
+        }
+
+        return [
+            'total_tokens' => $totalTokens,
+            'total_cost' => round($totalCost, 4),
+            'total_duration_ms' => $totalDuration,
+            'total_duration_seconds' => round($totalDuration / 1000, 2),
+            'total_participants' => $totalParticipants,
+            'questions_completed' => $questionsCompleted,
+            'model' => $model,
+            'avg_tokens_per_question' => $questionsCompleted > 0 ? round($totalTokens / $questionsCompleted) : 0,
+            'avg_cost_per_question' => $questionsCompleted > 0 ? round($totalCost / $questionsCompleted, 4) : 0,
         ];
     }
 }

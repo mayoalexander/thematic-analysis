@@ -13,7 +13,8 @@ class ProjectContext extends Model
         'draft_context',
         'analysis_results',
         'final_draft',
-        'progress'
+        'progress',
+        'metadata'
     ];
 
     protected $casts = [
@@ -23,5 +24,6 @@ class ProjectContext extends Model
         'analysis_results' => 'array',
         'final_draft' => 'array',
         'progress' => 'array',
+        'metadata' => 'array',
     ];
 }

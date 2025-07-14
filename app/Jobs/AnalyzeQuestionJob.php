@@ -56,13 +56,16 @@ class AnalyzeQuestionJob implements ShouldQueue
     {
         $draftContext = $this->project->draft_context ?? [];
         $analysisResults = $this->project->analysis_results ?? [];
+        $metadata = $this->project->metadata ?? [];
 
         $draftContext[$this->questionKey] = $result['raw'];
         $analysisResults[$this->questionKey] = $result['structured'];
+        $metadata[$this->questionKey] = $result['metadata'] ?? [];
 
         $this->project->update([
             'draft_context' => $draftContext,
             'analysis_results' => $analysisResults,
+            'metadata' => $metadata,
         ]);
     }
 

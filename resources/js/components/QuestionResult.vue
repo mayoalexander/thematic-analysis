@@ -2,7 +2,7 @@
   <div class="space-y-4">
     <div class="border-b pb-4">
       <h3 class="text-lg font-semibold">{{ result.question }}</h3>
-      <p class="text-sm text-gray-600">{{ result.participants }} participants</p>
+      <p class="text-sm text-gray-500">{{ result.participants }} participants</p>
       <div class="mt-2 p-3 bg-blue-50 rounded-lg">
         <p class="font-medium text-blue-900">{{ result.headline }}</p>
       </div>
@@ -10,7 +10,7 @@
 
     <div class="mb-4">
       <h4 class="font-medium mb-2">Summary</h4>
-      <p class="text-gray-700">{{ result.summary }}</p>
+      <p class="text-gray-200">{{ result.summary }}</p>
     </div>
 
     <div class="space-y-4">
@@ -24,12 +24,12 @@
           </span>
         </div>
         
-        <p class="text-gray-700 mb-3">{{ theme.description }}</p>
+        <p class="text-gray-200 mb-3">{{ theme.description }}</p>
         
         <div class="space-y-2">
-          <h6 class="text-sm font-medium text-gray-600">Supporting Quotes:</h6>
+          <h6 class="text-sm font-medium text-gray-500">Supporting Quotes:</h6>
           <div class="space-y-2">
-            <div v-for="(quote, quoteIndex) in theme.quotes" :key="quoteIndex" class="bg-gray-50 p-3 rounded">
+            <div v-for="(quote, quoteIndex) in theme.quotes" :key="quoteIndex" class="bg-gray-800 p-3 rounded">
               <p class="text-sm italic">"{{ quote.text }}"</p>
               <p class="text-xs text-gray-500 mt-1">— Participant {{ quote.participant_id }}</p>
             </div>

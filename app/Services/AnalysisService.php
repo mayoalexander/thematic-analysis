@@ -16,6 +16,7 @@ class AnalysisService
 
     public function analyzeQuestion(array $responses, array $context, string $questionKey)
     {
+        $startTime = microtime(true);
         $prompt = $this->buildPrompt($responses, $context, $questionKey);
 
         try {
@@ -29,12 +30,20 @@ class AnalysisService
                 'max_tokens' => 4000,
             ]);
 
+            $endTime = microtime(true);
+            $duration = round(($endTime - $startTime) * 1000); // milliseconds
+
             $rawOutput = $response->choices[0]->message->content;
             $structuredOutput = $this->parseThemeOutput($rawOutput);
+
+            // Calculate token usage and costs
+            $usage = $response->usage;
+            $metadata = $this->calculateMetadata($usage, $duration, count($responses));
 
             return [
                 'raw' => $rawOutput,
                 'structured' => $structuredOutput,
+                'metadata' => $metadata,
             ];
         } catch (\Exception $e) {
             Log::error("OpenAI API error for question {$questionKey}: " . $e->getMessage());
@@ -252,5 +261,38 @@ PROMPT;
         }
 
         return true;
+    }
+
+    protected function calculateMetadata($usage, int $durationMs, int $participantCount): array
+    {
+        // GPT-4o-mini pricing (as of 2024)
+        $inputCostPer1k = 0.000150;  // $0.15 per 1K input tokens
+        $outputCostPer1k = 0.000600; // $0.60 per 1K output tokens
+
+        $inputTokens = $usage->promptTokens ?? 0;
+        $outputTokens = $usage->completionTokens ?? 0;
+        $totalTokens = $usage->totalTokens ?? 0;
+
+        $inputCost = ($inputTokens / 1000) * $inputCostPer1k;
+        $outputCost = ($outputTokens / 1000) * $outputCostPer1k;
+        $totalCost = $inputCost + $outputCost;
+
+        return [
+            'model' => $this->model,
+            'duration_ms' => $durationMs,
+            'duration_seconds' => round($durationMs / 1000, 2),
+            'participant_count' => $participantCount,
+            'tokens' => [
+                'input' => $inputTokens,
+                'output' => $outputTokens,
+                'total' => $totalTokens,
+            ],
+            'costs' => [
+                'input' => round($inputCost, 6),
+                'output' => round($outputCost, 6),
+                'total' => round($totalCost, 6),
+            ],
+            'timestamp' => now()->toISOString(),
+        ];
     }
 }
