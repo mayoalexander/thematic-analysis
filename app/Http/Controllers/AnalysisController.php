@@ -6,6 +6,7 @@ use App\Jobs\AnalyzeQuestionJob;
 use App\Models\ProjectContext;
 use App\Services\AnalysisService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
 use Maatwebsite\Excel\HeadingRow;
@@ -31,10 +32,22 @@ class AnalysisController extends Controller
 
             // Reset progress if restarting
             if ($request->get('restart')) {
+                // Clear failed jobs
+                DB::table('failed_jobs')->delete();
+                
+                // Clear any pending jobs in the queue
+                DB::table('jobs')->delete();
+                
                 $project->update([
                     'draft_context' => null,
                     'analysis_results' => null,
                     'final_draft' => null,
+                    'metadata' => null,
+                    'working_context' => [
+                        'model' => 'gpt-4o-mini',
+                        'temperature' => 0.7,
+                        'max_tokens' => 4000
+                    ],
                     'progress' => [
                         'total' => 6,
                         'completed' => 0,
@@ -106,13 +119,34 @@ class AnalysisController extends Controller
             return response()->json(['error' => 'Project not found'], 404);
         }
 
+        // Get failed jobs from database
+        $failedJobs = DB::table('failed_jobs')->get();
+        $failedJobErrors = [];
+        
+        foreach ($failedJobs as $failedJob) {
+            $payload = json_decode($failedJob->payload, true);
+            if (isset($payload['data']['command'])) {
+                // Decode the serialized job to get question key
+                $command = unserialize($payload['data']['command']);
+                if (isset($command->questionKey)) {
+                    $failedJobErrors[$command->questionKey] = $failedJob->exception;
+                }
+            }
+        }
+
+        // Merge with working context errors
+        $allErrors = array_merge(
+            $project->working_context['errors'] ?? [],
+            $failedJobErrors
+        );
+
         // Calculate total metadata summary
         $metadataSummary = $this->calculateMetadataSummary($project->metadata ?? []);
 
         return response()->json([
             'progress' => $project->progress,
             'has_results' => !empty($project->analysis_results),
-            'errors' => $project->working_context['errors'] ?? [],
+            'errors' => $allErrors,
             'metadata_summary' => $metadataSummary,
         ]);
     }

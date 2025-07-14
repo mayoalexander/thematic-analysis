@@ -125,6 +125,8 @@ PROMPT;
 
     protected function parseThemeOutput(string $output): array
     {
+        Log::info("Starting to parse theme output", ['raw_output' => $output]);
+        
         $lines = explode("\n", $output);
         $result = [
             'question' => '',
@@ -138,14 +140,17 @@ PROMPT;
         $inQuotes = false;
         $currentSection = null;
 
-        foreach ($lines as $line) {
+        foreach ($lines as $lineNumber => $line) {
             $line = trim($line);
             
             if (empty($line)) continue;
 
+            Log::debug("Processing line {$lineNumber}: {$line}");
+
             // Parse question
             if (preg_match('/^## Question: (.+)/', $line, $matches)) {
                 $result['question'] = $matches[1];
+                Log::debug("Found question: {$result['question']}");
                 continue;
             }
 
@@ -227,6 +232,13 @@ PROMPT;
             $result['themes'][] = $currentTheme;
         }
 
+        Log::info("Finished parsing theme output", [
+            'themes_count' => count($result['themes']),
+            'has_question' => !empty($result['question']),
+            'has_summary' => !empty($result['summary']),
+            'result' => $result
+        ]);
+
         return $result;
     }
 
@@ -245,21 +257,33 @@ PROMPT;
 
     public function validateOutput(array $structuredOutput): bool
     {
+        // Log the structured output for debugging
+        Log::info('Validating output:', $structuredOutput);
+        
         // Basic validation
         if (empty($structuredOutput['themes'])) {
+            Log::warning('Validation failed: No themes found in output');
             return false;
         }
 
-        foreach ($structuredOutput['themes'] as $theme) {
-            if (empty($theme['title']) || empty($theme['description']) || empty($theme['quotes'])) {
+        foreach ($structuredOutput['themes'] as $index => $theme) {
+            if (empty($theme['title']) || empty($theme['description'])) {
+                Log::warning("Validation failed: Theme {$index} missing title or description", $theme);
+                return false;
+            }
+            
+            if (empty($theme['quotes'])) {
+                Log::warning("Validation failed: Theme {$index} missing quotes", $theme);
                 return false;
             }
             
             if (count($theme['quotes']) !== 3) {
+                Log::warning("Validation failed: Theme {$index} has " . count($theme['quotes']) . " quotes instead of 3", $theme);
                 return false;
             }
         }
 
+        Log::info('Output validation passed');
         return true;
     }
 

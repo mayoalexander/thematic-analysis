@@ -33,8 +33,15 @@ class AnalyzeQuestionJob implements ShouldQueue
                 $this->questionKey
             );
 
+            // Log the result for debugging
+            Log::info("Analysis result for {$this->questionKey}:", ['result' => $result]);
+
             // Validate the output
             if (!$analyzer->validateOutput($result['structured'])) {
+                Log::error("Invalid output structure for question: {$this->questionKey}", [
+                    'structured_output' => $result['structured'],
+                    'raw_output' => $result['raw']
+                ]);
                 throw new \Exception("Invalid output generated for question: {$this->questionKey}");
             }
 
@@ -71,8 +78,12 @@ class AnalyzeQuestionJob implements ShouldQueue
 
     protected function updateProgress(): void
     {
-        $progress = $this->project->progress ?? ['total' => 0, 'completed' => 0];
-        $progress['completed'] = ($progress['completed'] ?? 0) + 1;
+        // Get current analysis results to count actually completed questions
+        $analysisResults = $this->project->analysis_results ?? [];
+        $completedCount = count($analysisResults);
+        
+        $progress = $this->project->progress ?? ['total' => 6, 'completed' => 0];
+        $progress['completed'] = $completedCount;
         $progress['percent'] = round(($progress['completed'] / $progress['total']) * 100);
 
         $this->project->update(['progress' => $progress]);
