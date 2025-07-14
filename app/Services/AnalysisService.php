@@ -1,0 +1,256 @@
+<?php
+
+namespace App\Services;
+
+use OpenAI\Laravel\Facades\OpenAI;
+use Illuminate\Support\Facades\Log;
+
+class AnalysisService
+{
+    protected string $model;
+
+    public function __construct()
+    {
+        $this->model = config('openai.model', 'gpt-4o-mini');
+    }
+
+    public function analyzeQuestion(array $responses, array $context, string $questionKey)
+    {
+        $prompt = $this->buildPrompt($responses, $context, $questionKey);
+
+        try {
+            $response = OpenAI::chat()->create([
+                'model' => $this->model,
+                'messages' => [
+                    ['role' => 'system', 'content' => 'You are a skilled research assistant performing thematic analysis on qualitative interview data. Your task is to identify meaningful themes and provide supporting evidence through direct quotes.'],
+                    ['role' => 'user', 'content' => $prompt],
+                ],
+                'temperature' => 0.7,
+                'max_tokens' => 4000,
+            ]);
+
+            $rawOutput = $response->choices[0]->message->content;
+            $structuredOutput = $this->parseThemeOutput($rawOutput);
+
+            return [
+                'raw' => $rawOutput,
+                'structured' => $structuredOutput,
+            ];
+        } catch (\Exception $e) {
+            Log::error("OpenAI API error for question {$questionKey}: " . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    protected function buildPrompt(array $responses, array $context, string $questionKey): string
+    {
+        $projectBackground = $context['reasoning_context']['project_background'] ?? '';
+        $questionContext = $context['reasoning_context']['questions'][$questionKey] ?? [];
+        
+        $formattedResponses = $this->formatResponses($responses);
+        $participantCount = count($responses);
+
+        return <<<PROMPT
+PROJECT BACKGROUND:
+{$projectBackground}
+
+QUESTION BEING ANALYZED:
+{$questionContext['title']}
+
+PARTICIPANT RESPONSES ({$participantCount} total):
+{$formattedResponses}
+
+ANALYSIS INSTRUCTIONS:
+1. Identify 3-5 key themes that capture the main patterns in the responses
+2. Each theme should be "necessary and sufficient" - meaningful but not too broad or too narrow
+3. Themes should be mutually exclusive (no significant overlap)
+4. For each theme, provide:
+   - A clear, descriptive title that directly answers the question
+   - A brief description explaining the theme
+   - Count of participants who fit this theme
+   - Exactly 3 supporting quotes (verbatim, with participant IDs)
+
+CRITICAL REQUIREMENTS:
+- Use quotes EXACTLY as written - no rewording or paraphrasing
+- Each quote must include the participant ID (format: "Quote text" - Participant 1234)
+- Don't use the same quote for multiple themes
+- Don't use multiple quotes from the same participant for one theme
+- Ensure participant counts are accurate
+
+OUTPUT FORMAT:
+Please structure your response as follows:
+
+## Question: [Question Title]
+**Participants:** {$participantCount}
+**Headline:** [Engaging headline that captures the key insight]
+
+### Summary
+[1-2 sentences providing high-level overview of findings]
+
+### Themes
+
+**Theme 1: [Title]**
+Description: [Brief description]
+Participants: [Count]
+Supporting Quotes:
+- "Quote 1" - Participant [ID]
+- "Quote 2" - Participant [ID]
+- "Quote 3" - Participant [ID]
+
+**Theme 2: [Title]**
+[Continue same format...]
+
+PROMPT;
+    }
+
+    protected function formatResponses(array $responses): string
+    {
+        return collect($responses)
+            ->map(function ($response) {
+                $participantId = $response['participant_id'];
+                $content = $response['response'];
+                return "Participant {$participantId}: {$content}";
+            })
+            ->join("\n\n");
+    }
+
+    protected function parseThemeOutput(string $output): array
+    {
+        $lines = explode("\n", $output);
+        $result = [
+            'question' => '',
+            'participants' => 0,
+            'headline' => '',
+            'summary' => '',
+            'themes' => []
+        ];
+
+        $currentTheme = null;
+        $inQuotes = false;
+        $currentSection = null;
+
+        foreach ($lines as $line) {
+            $line = trim($line);
+            
+            if (empty($line)) continue;
+
+            // Parse question
+            if (preg_match('/^## Question: (.+)/', $line, $matches)) {
+                $result['question'] = $matches[1];
+                continue;
+            }
+
+            // Parse participants count
+            if (preg_match('/\*\*Participants:\*\* (\d+)/', $line, $matches)) {
+                $result['participants'] = (int) $matches[1];
+                continue;
+            }
+
+            // Parse headline
+            if (preg_match('/\*\*Headline:\*\* (.+)/', $line, $matches)) {
+                $result['headline'] = $matches[1];
+                continue;
+            }
+
+            // Parse summary section
+            if (str_contains($line, '### Summary')) {
+                $currentSection = 'summary';
+                continue;
+            }
+
+            // Parse themes section
+            if (str_contains($line, '### Themes')) {
+                $currentSection = 'themes';
+                continue;
+            }
+
+            // Parse theme title
+            if (preg_match('/\*\*Theme \d+: (.+)\*\*/', $line, $matches)) {
+                if ($currentTheme) {
+                    $result['themes'][] = $currentTheme;
+                }
+                $currentTheme = [
+                    'title' => $matches[1],
+                    'description' => '',
+                    'participants' => 0,
+                    'quotes' => []
+                ];
+                continue;
+            }
+
+            // Parse theme description
+            if (str_starts_with($line, 'Description:')) {
+                $currentTheme['description'] = trim(str_replace('Description:', '', $line));
+                continue;
+            }
+
+            // Parse participants count for theme
+            if (preg_match('/Participants: (\d+)/', $line, $matches)) {
+                $currentTheme['participants'] = (int) $matches[1];
+                continue;
+            }
+
+            // Parse quotes
+            if (str_contains($line, 'Supporting Quotes:')) {
+                $inQuotes = true;
+                continue;
+            }
+
+            if ($inQuotes && str_starts_with($line, '- "')) {
+                // Extract quote and participant ID
+                if (preg_match('/- "(.+)" - Participant (\d+)/', $line, $matches)) {
+                    $currentTheme['quotes'][] = [
+                        'text' => $matches[1],
+                        'participant_id' => $matches[2]
+                    ];
+                }
+                continue;
+            }
+
+            // Handle summary content
+            if ($currentSection === 'summary' && !empty($line) && !str_starts_with($line, '#')) {
+                $result['summary'] .= ($result['summary'] ? ' ' : '') . $line;
+            }
+        }
+
+        // Add the last theme if it exists
+        if ($currentTheme) {
+            $result['themes'][] = $currentTheme;
+        }
+
+        return $result;
+    }
+
+    public function extractUserResponses(string $conversationText): string
+    {
+        // Extract user responses from conversational format
+        // Pattern: user: [response] or similar
+        preg_match_all('/user:\s*(.+?)(?=\nassistant:|$)/s', $conversationText, $matches);
+        
+        if (!empty($matches[1])) {
+            return trim(implode(' ', $matches[1]));
+        }
+        
+        return trim($conversationText);
+    }
+
+    public function validateOutput(array $structuredOutput): bool
+    {
+        // Basic validation
+        if (empty($structuredOutput['themes'])) {
+            return false;
+        }
+
+        foreach ($structuredOutput['themes'] as $theme) {
+            if (empty($theme['title']) || empty($theme['description']) || empty($theme['quotes'])) {
+                return false;
+            }
+            
+            if (count($theme['quotes']) !== 3) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}
