@@ -847,6 +847,16 @@ const reprocessQuestion = async (questionKey) => {
 const fetchStatus = async () => {
   try {
     const response = await axios.get('/api/analysis/status')
+    
+    // DEBUG: Log progress data
+    console.log('🔍 FRONTEND POLL:', {
+      progress: response.data.progress,
+      has_results: response.data.has_results,
+      has_business_summary: response.data.has_business_summary,
+      is_complete: response.data.is_complete,
+      status: response.data.status
+    })
+    
     progress.value = response.data.progress
     errors.value = response.data.errors
     metadataSummary.value = response.data.metadata_summary

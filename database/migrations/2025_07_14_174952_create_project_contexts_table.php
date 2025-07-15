@@ -20,6 +20,8 @@ return new class extends Migration
             $table->json('analysis_results')->nullable();
             $table->json('final_draft')->nullable();
             $table->json('progress')->nullable();
+            $table->json('metadata')->nullable();
+            $table->string('status')->nullable();
             $table->timestamps();
         });
     }

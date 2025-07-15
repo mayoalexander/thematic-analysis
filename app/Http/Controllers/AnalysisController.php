@@ -162,8 +162,9 @@ class AnalysisController extends Controller
         $analysisResults = $project->analysis_results ?? [];
         $hasBusinessSummary = isset($analysisResults['business_summary']);
         $isComplete = $project->status === 'completed' || $hasBusinessSummary;
-
-        return response()->json([
+        
+        // DEBUG: Log progress data being returned
+        $responseData = [
             'progress' => $project->progress,
             'has_results' => !empty($project->analysis_results),
             'has_business_summary' => $hasBusinessSummary,
@@ -171,7 +172,17 @@ class AnalysisController extends Controller
             'status' => $project->status ?? 'processing',
             'errors' => $allErrors,
             'metadata_summary' => $metadataSummary,
+        ];
+        
+        Log::info('📊 STATUS RESPONSE:', [
+            'progress' => $project->progress,
+            'analysis_results_count' => count($analysisResults),
+            'has_business_summary' => $hasBusinessSummary,
+            'is_complete' => $isComplete,
+            'status' => $project->status ?? 'processing'
         ]);
+
+        return response()->json($responseData);
     }
 
     public function getResults(Request $request)

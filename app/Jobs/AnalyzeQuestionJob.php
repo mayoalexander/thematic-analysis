@@ -7,6 +7,7 @@ use App\Services\AnalysisService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use App\Jobs\BusinessSummaryJob;
 
 class AnalyzeQuestionJob implements ShouldQueue
@@ -66,18 +67,38 @@ class AnalyzeQuestionJob implements ShouldQueue
 
     protected function updateProjectContext(array $result): void
     {
-        $draftContext = $this->project->draft_context ?? [];
-        $analysisResults = $this->project->analysis_results ?? [];
-        $metadata = $this->project->metadata ?? [];
+        // Use database transaction with locking to prevent race conditions
+        DB::transaction(function () use ($result) {
+            // Lock the row for update to prevent concurrent modifications
+            $project = ProjectContext::where('id', $this->project->id)
+                ->lockForUpdate()
+                ->first();
+            
+            $draftContext = $project->draft_context ?? [];
+            $analysisResults = $project->analysis_results ?? [];
+            $metadata = $project->metadata ?? [];
 
-        $draftContext[$this->questionKey] = $result['raw'];
-        $analysisResults[$this->questionKey] = $result['structured'];
-        $metadata[$this->questionKey] = $result['metadata'] ?? [];
+            $draftContext[$this->questionKey] = $result['raw'];
+            $analysisResults[$this->questionKey] = $result['structured'];
+            $metadata[$this->questionKey] = $result['metadata'] ?? [];
 
-        $this->project->update([
-            'draft_context' => $draftContext,
-            'analysis_results' => $analysisResults,
-            'metadata' => $metadata,
+            $project->update([
+                'draft_context' => $draftContext,
+                'analysis_results' => $analysisResults,
+                'metadata' => $metadata,
+            ]);
+            
+            // Refresh our instance with the latest data
+            $this->project->refresh();
+        });
+        
+        // DEBUG: Log successful save with race condition protection
+        Log::info("💾 SAVED RESULT for {$this->questionKey} (with transaction lock):", [
+            'question' => $result['structured']['question'] ?? 'N/A',
+            'participants' => $result['structured']['participants'] ?? 0,
+            'themes_count' => count($result['structured']['themes'] ?? []),
+            'total_questions_saved' => count($this->project->analysis_results ?? []),
+            'all_saved_keys' => array_keys($this->project->analysis_results ?? [])
         ]);
     }
 
@@ -96,11 +117,17 @@ class AnalyzeQuestionJob implements ShouldQueue
 
         $this->project->update(['progress' => $progress]);
 
-        Log::info("Updated progress for {$this->questionKey}: {$completedCount}/{$progress['total']} completed");
+        // DEBUG: Log detailed progress info
+        Log::info("🔄 PROGRESS UPDATE for {$this->questionKey}:", [
+            'completed_count' => $completedCount,
+            'total' => $progress['total'],
+            'percent' => $progress['percent'],
+            'analysis_results_keys' => array_keys($analysisResults)
+        ]);
 
         // If all questions are completed, dispatch business summary job
         if ($completedCount >= $progress['total']) {
-            Log::info("All questions completed, dispatching business summary job");
+            Log::info("✅ All questions completed, dispatching business summary job");
             \App\Jobs\BusinessSummaryJob::dispatch($this->project);
         }
     }

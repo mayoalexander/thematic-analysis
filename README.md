@@ -6,7 +6,10 @@ Make sure you have NVM installed: https://github.com/nvm-sh/nvm
 
 
 # Start Demo + Project
-Simply run the setup script: `./setup.sh`
+Simply run the setup script: 
+```
+./setup.sh
+```
 
 or alternatively you can setup manually:
 ```

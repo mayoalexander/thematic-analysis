@@ -25,11 +25,19 @@ class BusinessSummaryJob implements ShouldQueue
     public function handle(AnalysisService $analyzer): void
     {
         try {
-            Log::info("Starting business summary generation for project: {$this->project->id}");
+            // DEBUG: Log business summary job start
+            Log::info("🚀 BUSINESS SUMMARY JOB STARTED for project: {$this->project->id}");
 
             // Get all analysis results
             $analysisResults = $this->project->analysis_results ?? [];
             $metadata = $this->project->metadata ?? [];
+
+            // DEBUG: Log what we have
+            Log::info("📋 BUSINESS SUMMARY INPUT:", [
+                'analysis_results_count' => count($analysisResults),
+                'analysis_results_keys' => array_keys($analysisResults),
+                'metadata_keys' => array_keys($metadata)
+            ]);
 
             if (empty($analysisResults)) {
                 throw new \Exception("No analysis results found to summarize");
@@ -83,6 +91,13 @@ class BusinessSummaryJob implements ShouldQueue
             'analysis_results' => $analysisResults,
             'metadata' => $metadata,
         ]);
+        
+        // DEBUG: Log successful business summary save
+        Log::info("💾 BUSINESS SUMMARY SAVED:", [
+            'project_id' => $this->project->id,
+            'has_business_summary' => isset($analysisResults['business_summary']),
+            'business_summary_keys' => array_keys($analysisResults['business_summary'] ?? [])
+        ]);
     }
 
     protected function markAnalysisComplete(): void
@@ -96,8 +111,15 @@ class BusinessSummaryJob implements ShouldQueue
             'progress' => $progress,
             'status' => 'completed'
         ]);
+        
+        // Refresh the project to make sure the status is updated
+        $this->project->refresh();
 
-        Log::info("Analysis workflow completed for project: {$this->project->id}");
+        // DEBUG: Log completion
+        Log::info("✅ ANALYSIS WORKFLOW COMPLETED for project: {$this->project->id}:", [
+            'progress' => $progress,
+            'status' => $this->project->status
+        ]);
     }
 
     protected function handleError(\Exception $e): void
