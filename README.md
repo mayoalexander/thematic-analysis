@@ -4,16 +4,24 @@
 
 Make sure you have NVM installed: https://github.com/nvm-sh/nvm
 
+
+# Start Demo + Project
+Simply run the setup script: `./setup.sh`
+
+or alternatively you can setup manually:
 ```
 nvm use 20
+cp .env.example .env
+
+# Add your Open AI Key to the .env file
+
 php artisan key:generate
 
-// Start Vue.js Frontend + Serve API Backend & Queue Worker
+// Start Vue.js Frontend + Serve API Backend and queue Worker
 composer run dev
 
-Navigate to:
-http://127.0.0.1:8000/analysis
-
+## Navigate to:
+open http://127.0.0.1:8000/analysis
 ```
 
 ## Overview
