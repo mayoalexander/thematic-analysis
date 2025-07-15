@@ -44,18 +44,24 @@
                 Demo File
               </button>
               <button
-                @click="selectFileOption(false)"
+                @click="FeatureFlags.isEnabled('fileUpload', 'uploadFile') ? selectFileOption(false) : null"
+                :disabled="!FeatureFlags.isEnabled('fileUpload', 'uploadFile')"
                 :class="[
-                  'flex-1 px-4 py-3 rounded-lg text-sm font-medium transition-all',
-                  !useDefaultFile
-                    ? 'bg-green-600 text-white border border-green-500 shadow-lg' 
-                    : 'bg-gray-700 text-gray-300 border border-gray-600 hover:bg-gray-600'
+                  'flex-1 px-4 py-3 rounded-lg text-sm font-medium transition-all relative',
+                  !FeatureFlags.isEnabled('fileUpload', 'uploadFile')
+                    ? 'bg-gray-800 text-gray-500 border border-gray-600 cursor-not-allowed opacity-60'
+                    : !useDefaultFile
+                      ? 'bg-green-600 text-white border border-green-500 shadow-lg' 
+                      : 'bg-gray-700 text-gray-300 border border-gray-600 hover:bg-gray-600'
                 ]"
               >
                 <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
                 </svg>
                 Upload File
+                <span v-if="!FeatureFlags.isEnabled('fileUpload', 'uploadFile')" class="absolute -top-1 -right-1 bg-yellow-500 text-yellow-900 text-xs px-2 py-0.5 rounded-full font-bold">
+                  {{ FeatureFlags.getReason('fileUpload', 'uploadFile') }}
+                </span>
               </button>
             </div>
             
@@ -69,7 +75,7 @@
               <p class="text-xs text-gray-400 mt-1 ml-6">6 questions • 106 participants</p>
             </div>
             
-            <div v-if="!useDefaultFile" class="space-y-3">
+            <div v-if="!useDefaultFile && FeatureFlags.isEnabled('fileUpload', 'uploadFile')" class="space-y-3">
               <div class="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center hover:border-gray-500 transition-colors">
                 <input
                   type="file"
@@ -136,6 +142,7 @@
                   </div>
                 </button>
                 <button
+                  v-if="FeatureFlags.isEnabled('models', 'gpt4')"
                   @click="selectModel('gpt-4', false)"
                   :class="[
                     'px-3 py-3 rounded-lg text-sm font-medium transition-all',
@@ -149,6 +156,19 @@
                     <div class="text-xs opacity-75">High Quality</div>
                   </div>
                 </button>
+                <!-- GPT-4 Coming Soon Placeholder -->
+                <div
+                  v-if="!FeatureFlags.isEnabled('models', 'gpt4')"
+                  class="px-3 py-3 rounded-lg text-sm font-medium bg-gray-800 text-gray-500 border border-gray-600 cursor-not-allowed opacity-60 relative"
+                >
+                  <div class="text-center">
+                    <div>GPT-4</div>
+                    <div class="text-xs opacity-75">High Quality</div>
+                  </div>
+                  <span class="absolute -top-1 -right-1 bg-yellow-500 text-yellow-900 text-xs px-2 py-0.5 rounded-full font-bold">
+                    {{ FeatureFlags.getReason('models', 'gpt4') }}
+                  </span>
+                </div>
               </div>
             </div>
             
@@ -156,20 +176,26 @@
             <div>
               <label class="text-sm font-medium text-gray-300 mb-2 block">Custom Model (OpenRouter)</label>
               <button
-                @click="selectModel('', true)"
+                @click="FeatureFlags.isEnabled('models', 'customModel') ? selectModel('', true) : null"
+                :disabled="!FeatureFlags.isEnabled('models', 'customModel')"
                 :class="[
-                  'w-full px-4 py-3 rounded-lg text-sm font-medium transition-all',
-                  useCustomModel
-                    ? 'bg-purple-600 text-white border border-purple-500 shadow-lg' 
-                    : 'bg-gray-700 text-gray-300 border border-gray-600 hover:bg-gray-600'
+                  'w-full px-4 py-3 rounded-lg text-sm font-medium transition-all relative',
+                  !FeatureFlags.isEnabled('models', 'customModel')
+                    ? 'bg-gray-800 text-gray-500 border border-gray-600 cursor-not-allowed opacity-60'
+                    : useCustomModel
+                      ? 'bg-purple-600 text-white border border-purple-500 shadow-lg' 
+                      : 'bg-gray-700 text-gray-300 border border-gray-600 hover:bg-gray-600'
                 ]"
               >
                 <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-3.586l6.879-6.879A6 6 0 0122 9z"></path>
                 </svg>
                 Use Your Own API Key
+                <span v-if="!FeatureFlags.isEnabled('models', 'customModel')" class="absolute -top-1 -right-1 bg-yellow-500 text-yellow-900 text-xs px-2 py-0.5 rounded-full font-bold">
+                  {{ FeatureFlags.getReason('models', 'customModel') }}
+                </span>
               </button>
-              <div v-if="useCustomModel" class="mt-3 space-y-2">
+              <div v-if="useCustomModel && FeatureFlags.isEnabled('models', 'customModel')" class="mt-3 space-y-2">
                 <input
                   v-model="customApiKey"
                   type="password"
@@ -891,4 +917,63 @@ onMounted(() => {
 onUnmounted(() => {
   stopPolling()
 })
+
+// Feature Flags Configuration
+class FeatureFlags {
+  static flags = {
+    models: {
+      gpt4: {
+        enabled: false,
+        beta: true,
+        reason: "Coming Soon"
+      },
+      gpt4oMini: {
+        enabled: true,
+        beta: false
+      },
+      customModel: {
+        enabled: false,
+        beta: true,
+        reason: "Coming Soon"
+      }
+    },
+    fileUpload: {
+      uploadFile: {
+        enabled: false,
+        beta: true,
+        reason: "Coming Soon"
+      },
+      demoFile: {
+        enabled: true,
+        beta: false
+      }
+    },
+    features: {
+      businessSummary: {
+        enabled: true,
+        beta: false
+      },
+      debugMode: {
+        enabled: true,
+        beta: false
+      }
+    }
+  }
+
+  static isEnabled(category, feature) {
+    return this.flags[category]?.[feature]?.enabled || false
+  }
+
+  static isBeta(category, feature) {
+    return this.flags[category]?.[feature]?.beta || false
+  }
+
+  static getReason(category, feature) {
+    return this.flags[category]?.[feature]?.reason || ''
+  }
+
+  static getFlag(category, feature) {
+    return this.flags[category]?.[feature] || { enabled: false, beta: false, reason: '' }
+  }
+}
 </script>
