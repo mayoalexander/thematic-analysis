@@ -935,7 +935,8 @@ const stopPolling = () => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await FeatureFlags.loadFlags()
   fetchStatus()
 })
 
@@ -982,6 +983,17 @@ class FeatureFlags {
         enabled: true,
         beta: false
       }
+    }
+  }
+
+  static async loadFlags() {
+    try {
+      const response = await axios.get('/api/feature-flags')
+      this.flags = response.data
+      console.log('🚩 Feature flags loaded:', this.flags)
+    } catch (error) {
+      console.error('❌ Failed to load feature flags:', error)
+      // Keep default flags if loading fails
     }
   }
 

@@ -1,12 +1,16 @@
 <?php
 
 use App\Http\Controllers\AnalysisController;
+use App\Http\Controllers\FeatureFlagsController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
+
+// Feature flags
+Route::get('/feature-flags', [FeatureFlagsController::class, 'getFlags']);
 
 // Analysis routes
 Route::prefix('analysis')->group(function () {
