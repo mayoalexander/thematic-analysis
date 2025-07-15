@@ -7,10 +7,15 @@ use App\Services\AnalysisService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
+use App\Jobs\BusinessSummaryJob;
 
 class AnalyzeQuestionJob implements ShouldQueue
 {
     use Queueable;
+
+    // Limit retry attempts to prevent infinite loops
+    public $tries = 3;
+    public $maxExceptions = 2;
 
     public function __construct(
         public ProjectContext $project,
@@ -78,6 +83,9 @@ class AnalyzeQuestionJob implements ShouldQueue
 
     protected function updateProgress(): void
     {
+        // Refresh the project to get the latest data
+        $this->project->refresh();
+        
         // Get current analysis results to count actually completed questions
         $analysisResults = $this->project->analysis_results ?? [];
         $completedCount = count($analysisResults);
@@ -87,6 +95,14 @@ class AnalyzeQuestionJob implements ShouldQueue
         $progress['percent'] = round(($progress['completed'] / $progress['total']) * 100);
 
         $this->project->update(['progress' => $progress]);
+
+        Log::info("Updated progress for {$this->questionKey}: {$completedCount}/{$progress['total']} completed");
+
+        // If all questions are completed, dispatch business summary job
+        if ($completedCount >= $progress['total']) {
+            Log::info("All questions completed, dispatching business summary job");
+            \App\Jobs\BusinessSummaryJob::dispatch($this->project);
+        }
     }
 
     protected function handleError(\Exception $e): void

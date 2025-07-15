@@ -11,6 +11,7 @@ Route::get('/user', function (Request $request) {
 // Analysis routes
 Route::prefix('analysis')->group(function () {
     Route::post('/trigger', [AnalysisController::class, 'triggerAnalysis']);
+    Route::post('/clear', [AnalysisController::class, 'clearAnalysis']);
     Route::get('/status', [AnalysisController::class, 'getStatus']);
     Route::get('/results', [AnalysisController::class, 'getResults']);
     Route::post('/reprocess/{questionKey}', [AnalysisController::class, 'reprocessQuestion']);

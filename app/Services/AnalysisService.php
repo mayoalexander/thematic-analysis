@@ -319,4 +319,203 @@ PROMPT;
             'timestamp' => now()->toISOString(),
         ];
     }
+
+    public function generateBusinessSummary(array $analysisResults, array $context, array $metadata)
+    {
+        $startTime = microtime(true);
+        $prompt = $this->buildBusinessSummaryPrompt($analysisResults, $context, $metadata);
+
+        try {
+            $response = OpenAI::chat()->create([
+                'model' => $this->model,
+                'messages' => [
+                    ['role' => 'system', 'content' => 'You are a senior business analyst creating executive summaries from thematic analysis results. Your task is to synthesize findings into actionable business insights and recommendations.'],
+                    ['role' => 'user', 'content' => $prompt],
+                ],
+                'temperature' => 0.3,
+                'max_tokens' => 3000,
+            ]);
+
+            $endTime = microtime(true);
+            $duration = round(($endTime - $startTime) * 1000); // milliseconds
+
+            $rawOutput = $response->choices[0]->message->content;
+            $structuredOutput = $this->parseBusinessSummaryOutput($rawOutput);
+
+            // Calculate token usage and costs
+            $usage = $response->usage;
+            $summaryMetadata = $this->calculateMetadata($usage, $duration, 1);
+
+            return [
+                'raw' => $rawOutput,
+                'structured' => $structuredOutput,
+                'metadata' => $summaryMetadata,
+            ];
+        } catch (\Exception $e) {
+            Log::error("OpenAI API error for business summary: " . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    protected function buildBusinessSummaryPrompt(array $analysisResults, array $context, array $metadata): string
+    {
+        $totalParticipants = $metadata['total_participants'] ?? 'Unknown';
+        $questionsCompleted = count($analysisResults);
+        
+        $prompt = "# Executive Business Summary Request\n\n";
+        $prompt .= "Please create a comprehensive executive summary based on the thematic analysis results below.\n\n";
+        $prompt .= "## Study Overview\n";
+        $prompt .= "- Participants: {$totalParticipants}\n";
+        $prompt .= "- Questions Analyzed: {$questionsCompleted}\n\n";
+        
+        $prompt .= "## Analysis Results by Question\n\n";
+        
+        foreach ($analysisResults as $questionKey => $themes) {
+            if ($questionKey === 'business_summary') continue; // Skip if already exists
+            
+            $prompt .= "### Question: " . ucwords(str_replace('_', ' ', $questionKey)) . "\n\n";
+            
+            if (isset($themes['themes']) && is_array($themes['themes'])) {
+                foreach ($themes['themes'] as $theme) {
+                    $prompt .= "**Theme:** {$theme['title']}\n";
+                    $prompt .= "**Description:** {$theme['description']}\n";
+                    $prompt .= "**Participants:** {$theme['participants']}\n";
+                    if (isset($theme['quotes']) && !empty($theme['quotes'])) {
+                        $prompt .= "**Key Quote:** \"{$theme['quotes'][0]['text']}\"\n";
+                    }
+                    $prompt .= "\n";
+                }
+            }
+            $prompt .= "---\n\n";
+        }
+        
+        $prompt .= "## Required Output Format\n\n";
+        $prompt .= "Please provide your response in the following JSON structure:\n\n";
+        $prompt .= "```json\n";
+        $prompt .= "{\n";
+        $prompt .= "  \"executive_summary\": \"Brief high-level overview of key findings\",\n";
+        $prompt .= "  \"key_insights\": [\n";
+        $prompt .= "    \"Insight 1\",\n";
+        $prompt .= "    \"Insight 2\",\n";
+        $prompt .= "    \"Insight 3\"\n";
+        $prompt .= "  ],\n";
+        $prompt .= "  \"recommendations\": [\n";
+        $prompt .= "    {\n";
+        $prompt .= "      \"priority\": \"High|Medium|Low\",\n";
+        $prompt .= "      \"action\": \"Specific recommendation\",\n";
+        $prompt .= "      \"rationale\": \"Why this is important\",\n";
+        $prompt .= "      \"impact\": \"Expected business impact\"\n";
+        $prompt .= "    }\n";
+        $prompt .= "  ],\n";
+        $prompt .= "  \"risks_and_opportunities\": {\n";
+        $prompt .= "    \"risks\": [\"Risk 1\", \"Risk 2\"],\n";
+        $prompt .= "    \"opportunities\": [\"Opportunity 1\", \"Opportunity 2\"]\n";
+        $prompt .= "  },\n";
+        $prompt .= "  \"next_steps\": [\"Step 1\", \"Step 2\", \"Step 3\"]\n";
+        $prompt .= "}\n";
+        $prompt .= "```\n\n";
+        $prompt .= "Focus on actionable insights that can drive business decisions. Synthesize themes across questions to identify overarching patterns and strategic implications.";
+        
+        return $prompt;
+    }
+
+    protected function parseBusinessSummaryOutput(string $output): array
+    {
+        Log::info("Parsing business summary output", ['raw_output' => $output]);
+        
+        // Extract JSON from the output
+        $jsonMatch = [];
+        if (preg_match('/```json\s*(\{.*?\})\s*```/s', $output, $jsonMatch)) {
+            $jsonContent = $jsonMatch[1];
+        } else {
+            // Try to find JSON without code blocks
+            if (preg_match('/(\{.*\})/s', $output, $jsonMatch)) {
+                $jsonContent = $jsonMatch[1];
+            } else {
+                Log::error("No JSON found in business summary output");
+                return [
+                    'executive_summary' => 'Failed to parse business summary',
+                    'key_insights' => [],
+                    'recommendations' => [],
+                    'risks_and_opportunities' => ['risks' => [], 'opportunities' => []],
+                    'next_steps' => []
+                ];
+            }
+        }
+        
+        try {
+            $parsed = json_decode($jsonContent, true);
+            
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                Log::error("JSON decode error in business summary: " . json_last_error_msg());
+                throw new \Exception("Invalid JSON in business summary output");
+            }
+            
+            // Validate required fields
+            $required = ['executive_summary', 'key_insights', 'recommendations', 'risks_and_opportunities', 'next_steps'];
+            foreach ($required as $field) {
+                if (!isset($parsed[$field])) {
+                    Log::warning("Missing required field in business summary: {$field}");
+                    $parsed[$field] = $field === 'risks_and_opportunities' ? ['risks' => [], 'opportunities' => []] : [];
+                }
+            }
+            
+            Log::info("Successfully parsed business summary", ['summary' => $parsed]);
+            return $parsed;
+            
+        } catch (\Exception $e) {
+            Log::error("Error parsing business summary JSON: " . $e->getMessage());
+            return [
+                'executive_summary' => 'Failed to parse business summary',
+                'key_insights' => [],
+                'recommendations' => [],
+                'risks_and_opportunities' => ['risks' => [], 'opportunities' => []],
+                'next_steps' => []
+            ];
+        }
+    }
+
+    public function validateBusinessSummary(array $summary): bool
+    {
+        $required = ['executive_summary', 'key_insights', 'recommendations', 'risks_and_opportunities', 'next_steps'];
+        
+        foreach ($required as $field) {
+            if (!isset($summary[$field])) {
+                Log::error("Business summary validation failed: missing {$field}");
+                return false;
+            }
+        }
+        
+        // Validate executive_summary is a string
+        if (!is_string($summary['executive_summary']) || empty(trim($summary['executive_summary']))) {
+            Log::error("Business summary validation failed: invalid executive_summary");
+            return false;
+        }
+        
+        // Validate arrays
+        $arrayFields = ['key_insights', 'next_steps'];
+        foreach ($arrayFields as $field) {
+            if (!is_array($summary[$field])) {
+                Log::error("Business summary validation failed: {$field} must be array");
+                return false;
+            }
+        }
+        
+        // Validate recommendations structure
+        if (!is_array($summary['recommendations'])) {
+            Log::error("Business summary validation failed: recommendations must be array");
+            return false;
+        }
+        
+        // Validate risks_and_opportunities structure
+        if (!is_array($summary['risks_and_opportunities']) ||
+            !isset($summary['risks_and_opportunities']['risks']) ||
+            !isset($summary['risks_and_opportunities']['opportunities'])) {
+            Log::error("Business summary validation failed: invalid risks_and_opportunities structure");
+            return false;
+        }
+        
+        Log::info("Business summary validation passed");
+        return true;
+    }
 }

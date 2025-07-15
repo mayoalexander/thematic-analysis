@@ -80,6 +80,12 @@ class AnalysisController extends Controller
                 }
             }, $excelPath)[0];
             
+            // Debug: Log available column headers
+            if (!empty($data)) {
+                $availableColumns = array_keys($data[0]);
+                Log::info('Available Excel columns:', ['columns' => $availableColumns]);
+            }
+            
             // Question columns (now using column names directly)
             $questionColumns = [
                 'vpn_selection',
@@ -89,13 +95,22 @@ class AnalysisController extends Controller
                 'remove_data_steps_probe_yes',
                 'remove_data_steps_probe_no',
             ];
+            
+            Log::info('Looking for question columns:', ['expected_columns' => $questionColumns]);
 
             // Process each question column
             foreach ($questionColumns as $questionKey) {
                 $responses = $this->extractResponses($data, $questionKey);
                 
+                Log::info("Processing question: {$questionKey}", [
+                    'response_count' => count($responses),
+                    'sample_data' => array_slice($responses, 0, 2) // Log first 2 responses for debugging
+                ]);
+                
                 if (!empty($responses)) {
                     AnalyzeQuestionJob::dispatch($project, $questionKey, $responses);
+                } else {
+                    Log::warning("No responses found for question: {$questionKey}");
                 }
             }
 
@@ -143,9 +158,17 @@ class AnalysisController extends Controller
         // Calculate total metadata summary
         $metadataSummary = $this->calculateMetadataSummary($project->metadata ?? []);
 
+        // Check if business summary is complete
+        $analysisResults = $project->analysis_results ?? [];
+        $hasBusinessSummary = isset($analysisResults['business_summary']);
+        $isComplete = $project->status === 'completed' || $hasBusinessSummary;
+
         return response()->json([
             'progress' => $project->progress,
             'has_results' => !empty($project->analysis_results),
+            'has_business_summary' => $hasBusinessSummary,
+            'is_complete' => $isComplete,
+            'status' => $project->status ?? 'processing',
             'errors' => $allErrors,
             'metadata_summary' => $metadataSummary,
         ]);
@@ -200,6 +223,47 @@ class AnalysisController extends Controller
         } catch (\Exception $e) {
             Log::error("Error reprocessing question {$questionKey}: " . $e->getMessage());
             return response()->json(['error' => 'Failed to reprocess question'], 500);
+        }
+    }
+
+    public function clearAnalysis(Request $request)
+    {
+        try {
+            // Clear failed jobs
+            DB::table('failed_jobs')->delete();
+            
+            // Clear any pending jobs in the queue
+            DB::table('jobs')->delete();
+
+            $project = ProjectContext::where('name', 'vpn-analysis')->first();
+            
+            if ($project) {
+                $project->update([
+                    'draft_context' => null,
+                    'analysis_results' => null,
+                    'final_draft' => null,
+                    'metadata' => null,
+                    'working_context' => [
+                        'model' => 'gpt-4o-mini',
+                        'temperature' => 0.7,
+                        'max_tokens' => 4000
+                    ],
+                    'progress' => [
+                        'total' => 6,
+                        'completed' => 0,
+                        'percent' => 0
+                    ]
+                ]);
+            }
+
+            return response()->json([
+                'message' => 'Analysis cleared successfully',
+                'project_reset' => !is_null($project)
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error clearing analysis: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to clear analysis'], 500);
         }
     }
 
