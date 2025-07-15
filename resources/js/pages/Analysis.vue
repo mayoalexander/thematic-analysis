@@ -3,9 +3,24 @@
     <!-- Header -->
     <div class="max-w-6xl mx-auto">
       <!-- Title Section -->
-      <div class="text-center mb-8">
-        <h1 class="text-3xl md:text-4xl font-bold text-white mb-2">Thematic Analysis Pipeline</h1>
-        <p class="text-gray-400 text-lg">AI-powered qualitative data analysis workflow</p>
+      <div class="mb-8 mt-24">
+        <div class="text-left mb-8">
+          <h1 class="text-3xl md:text-4xl font-extrabold text-white mb-2">Thematic Analysis Pipeline</h1>
+          <p class="text-gray-400 text-lg">AI-powered qualitative data analysis workflow</p>
+        </div>
+
+        <div>
+          <!-- Prelude -->
+          <p class="text-grayx-300 text-md mb-4 font-medium">
+            I built this around the director pattern, using the context as a high level orchestrator, and each subtask adding to the global context, then a final summary agent 
+            that consolidates the findings and presents them in a coherent manner in the context of the business.
+
+            This leverages advanced AI techniques to ensure high-quality insights, reduce hallucinations, and provide actionable recommendations.
+          </p>
+          <p class="opacity-50">
+            - Alex Mayo
+          </p>
+        </div>
       </div>
 
       <!-- Configuration Panel -->
