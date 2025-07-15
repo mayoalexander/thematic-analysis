@@ -1,5 +1,23 @@
 
 
+## Getting Started
+
+Make sure you have NVM installed: https://github.com/nvm-sh/nvm
+
+```
+nvm use 20
+php artisan key:generate
+
+// Start Vue.js Frontend + Serve API Backend & Queue Worker
+composer run dev
+
+Navigate to:
+http://127.0.0.1:8000/analysis
+
+```
+
+## Overview
+
   🏗️ Core Architecture
 
   - Director Pattern with layered context management
